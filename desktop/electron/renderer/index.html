@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,6 +13,17 @@
         <img id="eyes" class="layer eyes" alt="" />
         <img id="mouth" class="layer mouth" alt="" />
       </section>
+
+      <nav id="hud" class="hud" aria-label="Lyra controls">
+        <button id="micBtn" class="hud-button" data-command="toggle_microphone" type="button">Mic</button>
+        <button id="screenBtn" class="hud-button" data-command="toggle_screen" type="button">Screen</button>
+        <button id="listenBtn" class="hud-button" data-command="toggle_listening" type="button">Listen</button>
+        <button id="stopBtn" class="hud-button danger" data-command="stop_activity" type="button">Stop</button>
+        <button id="hideHudBtn" class="hud-button" type="button">Hide HUD</button>
+        <button id="reloadBtn" class="hud-button" type="button">Reload</button>
+        <button id="closeBtn" class="hud-button danger" type="button">Close</button>
+      </nav>
+
       <div id="status">Ctrl+Shift+L: click-through</div>
     </main>
     <script src="renderer.js"></script>
