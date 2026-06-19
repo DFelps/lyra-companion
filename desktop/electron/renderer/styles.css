@@ -33,11 +33,14 @@ button,
   position: relative;
   width: min(100vw, 430px);
   height: min(100vh, 760px);
-  transform-origin: 50% 85%;
-  animation: idleFloat 5.2s ease-in-out infinite;
+  transform-origin: 50% 86%;
+  will-change: transform, filter;
+  animation: idleFloat 6.6s cubic-bezier(.45, 0, .55, 1) infinite;
 }
 
-.layer {
+.layer,
+.avatar-ghost,
+.ghost-layer {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -47,34 +50,86 @@ button,
   -webkit-user-drag: none;
 }
 
-.eyes,
-.mouth {
-  transition: opacity 80ms linear, transform 90ms ease-out;
+.layer {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 220ms ease,
+    transform 260ms cubic-bezier(.22, 1, .36, 1),
+    filter 260ms ease;
 }
 
+.eyes {
+  transition:
+    opacity 110ms ease,
+    transform 130ms cubic-bezier(.22, 1, .36, 1),
+    filter 160ms ease;
+}
+
+.mouth {
+  transition:
+    opacity 90ms ease,
+    transform 95ms cubic-bezier(.22, 1, .36, 1),
+    filter 120ms ease;
+}
+
+.avatar.pose-enter > .layer {
+  opacity: 0;
+  transform: translateY(8px) scale(0.992);
+  filter: blur(0.4px);
+}
+
+.avatar-ghost {
+  z-index: 5;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 330ms ease,
+    transform 350ms cubic-bezier(.22, 1, .36, 1),
+    filter 350ms ease;
+}
+
+.avatar-ghost.fade-out {
+  opacity: 0;
+  transform: translateY(-5px) scale(1.006);
+  filter: blur(0.6px);
+}
+
+.base { z-index: 1; }
+.eyes { z-index: 2; }
+.mouth { z-index: 3; }
+
 .avatar.speaking {
-  animation: speakingFloat 440ms ease-in-out infinite;
+  animation: speakingFloat 720ms cubic-bezier(.45, 0, .55, 1) infinite;
 }
 
 .avatar.thinking {
-  animation: thinkingFloat 2.4s ease-in-out infinite;
+  animation: thinkingFloat 4.2s cubic-bezier(.45, 0, .55, 1) infinite;
 }
 
 .avatar.listening {
-  animation: listeningFloat 3.4s ease-in-out infinite;
+  animation: listeningFloat 4.8s cubic-bezier(.45, 0, .55, 1) infinite;
 }
 
 .avatar.approach {
-  animation: approachFloat 2.8s ease-in-out infinite;
+  animation: approachFloat 3.8s cubic-bezier(.45, 0, .55, 1) infinite;
 }
 
 .avatar.happy .eyes,
 .avatar.happy .mouth {
-  transform: translateY(1px);
+  transform: translateY(1px) scale(1.002);
+}
+
+.avatar.serious .eyes {
+  transform: translateY(-0.5px);
 }
 
 .avatar.surprised .mouth {
-  transform: scale(1.03);
+  transform: scale(1.035);
+}
+
+.mouth.mouth-pop {
+  transform: translateY(0.5px) scale(1.012);
 }
 
 .hud {
@@ -157,26 +212,27 @@ body.hud-hidden .hud {
 }
 
 @keyframes idleFloat {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-7px) scale(1.003); }
+  0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+  35% { transform: translateY(-4px) rotate(-0.18deg) scale(1.002); }
+  70% { transform: translateY(-7px) rotate(0.16deg) scale(1.0035); }
 }
 
 @keyframes speakingFloat {
-  0%, 100% { transform: translateY(0) scale(1.002); }
-  50% { transform: translateY(-4px) scale(1.006); }
+  0%, 100% { transform: translateY(0) rotate(0deg) scale(1.002); }
+  50% { transform: translateY(-3px) rotate(0.12deg) scale(1.005); }
 }
 
 @keyframes thinkingFloat {
-  0%, 100% { transform: translateY(0) rotate(-0.35deg); }
-  50% { transform: translateY(-5px) rotate(0.35deg); }
+  0%, 100% { transform: translateY(0) rotate(-0.28deg) scale(1); }
+  50% { transform: translateY(-5px) rotate(0.24deg) scale(1.002); }
 }
 
 @keyframes listeningFloat {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-5px) scale(1.002); }
+  0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+  50% { transform: translateY(-5px) rotate(-0.18deg) scale(1.0025); }
 }
 
 @keyframes approachFloat {
-  0%, 100% { transform: translateY(0) scale(1.004); }
-  50% { transform: translateY(-6px) scale(1.009); }
+  0%, 100% { transform: translateY(0) rotate(0deg) scale(1.004); }
+  50% { transform: translateY(-6px) rotate(0.18deg) scale(1.009); }
 }
