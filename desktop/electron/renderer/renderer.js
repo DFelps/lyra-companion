@@ -17,14 +17,21 @@ const speakingMouths = ['closed', 'middle_open', 'open']
 
 let config = null
 let currentState = {}
-let currentPoseKey = 'idleDefault'
+let currentPoseKey = ''
 let currentIdlePoseKey = 'idleDefault'
+let currentRenderedMouth = 'closed'
 let lastIdlePoseChangeAt = 0
+let nextIdlePoseChangeAt = 0
 let blinkLockedUntil = 0
 let thinkingEyeOpenUntil = 0
 let lastThinkingEyePulseAt = 0
+let lastMouthChangeAt = 0
+let mouthChangeTimer = null
 let hudVisible = true
 let commandBusy = false
+let isPoseTransitioning = false
+
+const imageCache = new Map()
 
 function joinUrl(baseUrl, file) {
   return `${baseUrl.replace(/\/$/, '')}/${file}`
@@ -36,6 +43,21 @@ function poseUrl(pose, file) {
 
 function partUrl(pose, type, name) {
   return joinUrl(joinUrl(joinUrl(config.posesBaseUrl, pose.id), pose.partsDir), `${type}_${name}.png`)
+}
+
+function preloadImage(src) {
+  if (!src) return Promise.resolve()
+  if (imageCache.has(src)) return imageCache.get(src)
+
+  const promise = new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve(src)
+    img.onerror = () => resolve(src)
+    img.src = src
+  })
+
+  imageCache.set(src, promise)
+  return promise
 }
 
 function setImage(element, next) {
@@ -121,18 +143,21 @@ function normalizeMouth(pose, requested, mode, expression) {
   return 'closed'
 }
 
+function scheduleNextIdlePoseChange(minSeconds = 9, maxSeconds = 18) {
+  nextIdlePoseChangeAt = Date.now() + (minSeconds + Math.random() * (maxSeconds - minSeconds)) * 1000
+}
+
 function pickIdlePose(force = false) {
   const now = Date.now()
-  const interval = 13000 + Math.random() * 9000
 
-  if (!force && now - lastIdlePoseChangeAt < interval) {
+  if (!force && now < nextIdlePoseChangeAt) {
     return currentIdlePoseKey
   }
 
-  const currentIndex = idlePoseKeys.indexOf(currentIdlePoseKey)
-  const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1 + Math.floor(Math.random() * 2)) % idlePoseKeys.length
-  currentIdlePoseKey = idlePoseKeys[nextIndex]
+  const options = idlePoseKeys.filter((key) => key !== currentIdlePoseKey)
+  currentIdlePoseKey = options[Math.floor(Math.random() * options.length)] || 'idleDefault'
   lastIdlePoseChangeAt = now
+  scheduleNextIdlePoseChange()
   return currentIdlePoseKey
 }
 
@@ -152,20 +177,100 @@ function poseKeyForState(state, mode) {
   return pickIdlePose(false)
 }
 
-function applyPose(poseKey) {
-  if (poseKey === currentPoseKey) return
+function cloneCurrentAvatar() {
+  if (!base.dataset.src) return
 
-  currentPoseKey = poseKey
-  const pose = config.poses[poseKey]
-  setImage(base, poseUrl(pose, pose.baseImage))
+  const ghost = document.createElement('div')
+  ghost.className = 'avatar-ghost'
+
+  ;[base, eyes, mouth].forEach((layer) => {
+    if (!layer.dataset.src) return
+    const clone = layer.cloneNode(false)
+    clone.removeAttribute('id')
+    clone.classList.add('ghost-layer')
+    ghost.appendChild(clone)
+  })
+
+  avatar.appendChild(ghost)
+  requestAnimationFrame(() => ghost.classList.add('fade-out'))
+  setTimeout(() => ghost.remove(), 360)
+}
+
+function setMouthImageSmooth(url, mouthName, mode, force = false) {
+  if (mouthChangeTimer) {
+    clearTimeout(mouthChangeTimer)
+    mouthChangeTimer = null
+  }
+
+  if (force || mode !== 'speaking') {
+    currentRenderedMouth = mouthName
+    lastMouthChangeAt = Date.now()
+    setImage(mouth, url)
+    return
+  }
+
+  if (currentRenderedMouth === mouthName) return
+
+  const now = Date.now()
+  const minimumDelay = mouthName === 'closed' ? 62 : 86
+  const elapsed = now - lastMouthChangeAt
+
+  const commit = () => {
+    currentRenderedMouth = mouthName
+    lastMouthChangeAt = Date.now()
+    mouth.classList.add('mouth-pop')
+    setImage(mouth, url)
+    setTimeout(() => mouth.classList.remove('mouth-pop'), 110)
+  }
+
+  if (elapsed >= minimumDelay) {
+    commit()
+  } else {
+    mouthChangeTimer = setTimeout(commit, minimumDelay - elapsed)
+  }
+}
+
+async function renderAvatar(poseKey, pose, eyeName, mouthName, mode, expression) {
+  const nextBase = poseUrl(pose, pose.baseImage)
+  const nextEye = partUrl(pose, 'eye', eyeName)
+  const nextMouth = partUrl(pose, 'mouth', mouthName)
+  const poseChanged = poseKey !== currentPoseKey
+
+  await Promise.all([
+    preloadImage(nextBase),
+    preloadImage(nextEye),
+    preloadImage(nextMouth)
+  ])
+
+  if (poseChanged) {
+    cloneCurrentAvatar()
+    isPoseTransitioning = true
+    avatar.classList.add('pose-enter')
+    currentPoseKey = poseKey
+  }
+
+  avatar.className = `avatar ${mode} ${expression} pose-${pose.id}${poseChanged ? ' pose-enter' : ''}`
+
+  setImage(base, nextBase)
+  setImage(eyes, nextEye)
+  setMouthImageSmooth(nextMouth, mouthName, mode, poseChanged)
+
+  if (poseChanged) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        avatar.classList.remove('pose-enter')
+        isPoseTransitioning = false
+      })
+    })
+  }
 }
 
 function updateThinkingPulse(mode) {
   if (mode !== 'thinking') return
 
   const now = Date.now()
-  if (now - lastThinkingEyePulseAt > 2600 + Math.random() * 2400) {
-    thinkingEyeOpenUntil = now + 220
+  if (now - lastThinkingEyePulseAt > 2800 + Math.random() * 2600) {
+    thinkingEyeOpenUntil = now + 210
     lastThinkingEyePulseAt = now
   }
 }
@@ -193,17 +298,13 @@ function applyState(state) {
   const poseKey = poseKeyForState(state, mode)
   const pose = config.poses[poseKey] || config.poses.idleDefault
 
-  applyPose(poseKey)
-
   const requestedEye = String(state.eye || 'open').replace(/^eye_/, '')
   const requestedMouth = String(state.mouth || 'closed').replace(/^mouth_/, '')
 
   const eyeName = normalizeEye(pose, requestedEye, mode, expression)
   const mouthName = normalizeMouth(pose, requestedMouth, mode, expression)
 
-  avatar.className = `avatar ${mode} ${expression} pose-${pose.id}`
-  setImage(eyes, partUrl(pose, 'eye', eyeName))
-  setImage(mouth, partUrl(pose, 'mouth', mouthName))
+  renderAvatar(poseKey, pose, eyeName, mouthName, mode, expression)
   updateHudFromState(state)
 }
 
@@ -216,6 +317,29 @@ async function pollState() {
   }
 }
 
+function runBlinkSequence(sequence) {
+  if (!config || !currentState) return
+  const mode = normalizeMode(currentState.mode)
+  if (mode === 'thinking' || isPoseTransitioning) return
+
+  const pose = config.poses[currentPoseKey] || config.poses.idleDefault
+  if (!hasPart(pose, 'eye', 'closed')) return
+
+  let delay = 0
+  sequence.forEach((step) => {
+    delay += step.after
+    setTimeout(() => {
+      if (normalizeMode(currentState.mode) === 'thinking' || isPoseTransitioning) return
+      blinkLockedUntil = step.closed ? Date.now() + step.duration : 0
+      if (step.closed) {
+        setImage(eyes, partUrl(pose, 'eye', 'closed'))
+      } else {
+        applyState(currentState)
+      }
+    }, delay)
+  })
+}
+
 function startBlinkLoop() {
   const tick = () => {
     const mode = normalizeMode(currentState.mode)
@@ -223,20 +347,28 @@ function startBlinkLoop() {
     const thinking = mode === 'thinking'
 
     const delay = thinking
-      ? 4200 + Math.random() * 3200
+      ? 4500 + Math.random() * 3600
       : speaking
-        ? 2600 + Math.random() * 2200
-        : 3200 + Math.random() * 3600
+        ? 2400 + Math.random() * 2600
+        : 2800 + Math.random() * 4200
 
     setTimeout(() => {
-      if (normalizeMode(currentState.mode) !== 'thinking') {
-        blinkLockedUntil = Date.now() + 140
-        const pose = config.poses[currentPoseKey] || config.poses.idleDefault
-        if (hasPart(pose, 'eye', 'closed')) {
-          setImage(eyes, partUrl(pose, 'eye', 'closed'))
-        }
-        setTimeout(() => applyState(currentState), 150)
+      const doubleBlink = !speaking && Math.random() < 0.16
+
+      if (doubleBlink) {
+        runBlinkSequence([
+          { closed: true, after: 0, duration: 110 },
+          { closed: false, after: 115, duration: 0 },
+          { closed: true, after: 90, duration: 95 },
+          { closed: false, after: 105, duration: 0 }
+        ])
+      } else {
+        runBlinkSequence([
+          { closed: true, after: 0, duration: 120 + Math.random() * 35 },
+          { closed: false, after: 135 + Math.random() * 35, duration: 0 }
+        ])
       }
+
       tick()
     }, delay)
   }
@@ -297,6 +429,7 @@ async function init() {
   currentIdlePoseKey = 'idleDefault'
   currentPoseKey = ''
   lastIdlePoseChangeAt = Date.now()
+  scheduleNextIdlePoseChange(6, 10)
 
   bindHud()
 
@@ -313,7 +446,7 @@ async function init() {
     }
   })
 
-  setInterval(pollState, 65)
+  setInterval(pollState, 75)
   startBlinkLoop()
 
   window.lyraAvatar.onClickThroughChanged((enabled) => {
