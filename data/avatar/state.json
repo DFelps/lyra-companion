@@ -1,10 +1,16 @@
 {
   "mode": "idle",
+  "pose": null,
   "eye": "open",
   "mouth": "closed",
   "expression": "neutral",
   "speaking": false,
   "mouth_level": 0,
   "text": "",
-  "updated_at": 1779585227.9909208
+  "controls": {
+    "microphone": false,
+    "screen": false,
+    "listening": false
+  },
+  "updated_at": 1781897171.9233177
 }

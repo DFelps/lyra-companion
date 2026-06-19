@@ -10,6 +10,13 @@ body {
 
 body {
   -webkit-app-region: drag;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+.hud,
+#status {
+  -webkit-app-region: no-drag;
 }
 
 #stage {
@@ -27,7 +34,7 @@ body {
   width: min(100vw, 430px);
   height: min(100vh, 760px);
   transform-origin: 50% 85%;
-  animation: idleFloat 4.8s ease-in-out infinite;
+  animation: idleFloat 5.2s ease-in-out infinite;
 }
 
 .layer {
@@ -46,11 +53,19 @@ body {
 }
 
 .avatar.speaking {
-  animation: speakingFloat 420ms ease-in-out infinite;
+  animation: speakingFloat 440ms ease-in-out infinite;
 }
 
 .avatar.thinking {
-  animation: thinkingFloat 2.2s ease-in-out infinite;
+  animation: thinkingFloat 2.4s ease-in-out infinite;
+}
+
+.avatar.listening {
+  animation: listeningFloat 3.4s ease-in-out infinite;
+}
+
+.avatar.approach {
+  animation: approachFloat 2.8s ease-in-out infinite;
 }
 
 .avatar.happy .eyes,
@@ -62,17 +77,79 @@ body {
   transform: scale(1.03);
 }
 
+.hud {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(11, 12, 18, 0.42);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(12px);
+  opacity: 0.18;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.hud:hover,
+.hud:focus-within {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+.hud-button {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.08);
+  font: 600 11px/1 system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 120ms ease;
+}
+
+.hud-button:hover {
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
+}
+
+.hud-button.active {
+  color: rgba(255, 255, 255, 0.98);
+  background: rgba(109, 92, 255, 0.34);
+  border-color: rgba(180, 174, 255, 0.54);
+}
+
+.hud-button.danger:hover {
+  background: rgba(255, 77, 109, 0.25);
+  border-color: rgba(255, 126, 150, 0.42);
+}
+
+body.hud-hidden .hud {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(16px);
+}
+
 #status {
   position: absolute;
   left: 12px;
   bottom: 10px;
+  max-width: 300px;
   padding: 6px 9px;
   border-radius: 999px;
   font: 12px/1.2 system-ui, sans-serif;
-  color: rgba(255, 255, 255, 0.8);
-  background: rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(0, 0, 0, 0.32);
   opacity: 0;
   transition: opacity 180ms ease;
+  pointer-events: none;
 }
 
 #status.visible {
@@ -92,4 +169,14 @@ body {
 @keyframes thinkingFloat {
   0%, 100% { transform: translateY(0) rotate(-0.35deg); }
   50% { transform: translateY(-5px) rotate(0.35deg); }
+}
+
+@keyframes listeningFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-5px) scale(1.002); }
+}
+
+@keyframes approachFloat {
+  0%, 100% { transform: translateY(0) scale(1.004); }
+  50% { transform: translateY(-6px) scale(1.009); }
 }

@@ -13,10 +13,11 @@ from app.core.session_manager import SessionManager
 from app.llm.general_reasoner import GeneralReasoner
 from app.memory.retrieval import Retrieval
 from app.ui.cli import CLI
-from app.avatar.state import choose_expression, set_mode
+from app.avatar.commands import AvatarCommandReader
+from app.avatar.state import choose_expression, get_avatar_state, set_controls, set_mode
 from app.utils.logger import log
 from app.voice.tts import configure_tts, generate_audio, warmup_tts
-from app.avatar.lipsync import play_with_lipsync
+from app.avatar.lipsync import play_with_lipsync, request_lipsync_stop
 
 
 class LyraOrchestrator:
@@ -43,12 +44,18 @@ class LyraOrchestrator:
         self.voice_state_lock = Lock()
         self.pending_voice_items = 0
         self.voice_active = Event()
+        self.voice_cancel_requested = Event()
+        self.shutdown_requested = Event()
+
+        self.command_reader = AvatarCommandReader()
 
         self.voice_generate_thread = Thread(target=self._voice_generate_worker, daemon=True)
         self.voice_play_thread = Thread(target=self._voice_play_worker, daemon=True)
+        self.command_thread = Thread(target=self._avatar_command_worker, daemon=True)
 
         self.voice_generate_thread.start()
         self.voice_play_thread.start()
+        self.command_thread.start()
 
         if self.voice_enabled:
             Thread(target=self._warmup_voice, daemon=True).start()
@@ -78,6 +85,63 @@ class LyraOrchestrator:
         except Exception as exc:
             log(f"Falha ao ativar estado '{state}': {exc}")
 
+    def _avatar_command_worker(self) -> None:
+        while not self.shutdown_requested.is_set():
+            try:
+                command = self.command_reader.read_next()
+                if command is not None:
+                    self._handle_avatar_command(command.command, command.payload)
+            except Exception as exc:
+                log(f"Falha ao processar comando do avatar: {exc}")
+
+            time.sleep(0.12)
+
+    def _handle_avatar_command(self, command: str, payload: dict | None = None) -> None:
+        payload = payload or {}
+        state = get_avatar_state()
+        controls = state.get("controls", {})
+
+        if command == "toggle_microphone":
+            enabled = not bool(controls.get("microphone"))
+            set_controls(microphone=enabled)
+            log(f"Microfone visual {'ativado' if enabled else 'desativado'} pela HUD.")
+            return
+
+        if command == "toggle_screen":
+            enabled = not bool(controls.get("screen"))
+            set_controls(screen=enabled)
+            log(f"Tela visual {'ativada' if enabled else 'desativada'} pela HUD.")
+            return
+
+        if command in {"toggle_listening", "start_listening", "stop_listening"}:
+            if command == "start_listening":
+                enabled = True
+            elif command == "stop_listening":
+                enabled = False
+            else:
+                enabled = not bool(controls.get("listening"))
+
+            set_controls(listening=enabled)
+            self._set_state_safe("listening" if enabled else "idle")
+            log(f"Listening visual {'ativado' if enabled else 'desativado'} pela HUD.")
+            return
+
+        if command in {"stop_activity", "stop_speaking"}:
+            self.voice_cancel_requested.set()
+            request_lipsync_stop()
+            set_controls(listening=False)
+            self._set_state_safe("idle")
+            log("Atividade de voz/listening interrompida pela HUD.")
+            return
+
+        if command == "set_idle":
+            set_controls(listening=False)
+            self._set_state_safe("idle")
+            return
+
+        if command == "reload_avatar":
+            return
+
     def _voice_generate_worker(self) -> None:
         while True:
             text = self.voice_text_queue.get()
@@ -89,7 +153,7 @@ class LyraOrchestrator:
 
             try:
                 result = generate_audio(text)
-                if result is not None:
+                if result is not None and not self.voice_cancel_requested.is_set():
                     _, wav = result
                     expression = choose_expression("", text)
                     self.voice_audio_queue.put((expression, wav))
@@ -110,6 +174,9 @@ class LyraOrchestrator:
                 break
 
             try:
+                if self.voice_cancel_requested.is_set():
+                    continue
+
                 expression, wav = item
                 play_with_lipsync(wav, 24000, expression=expression)
             except Exception as exc:
@@ -126,6 +193,7 @@ class LyraOrchestrator:
         if not cleaned:
             return
 
+        self.voice_cancel_requested.clear()
         self._mark_voice_item_added()
         self.voice_text_queue.put(cleaned)
 
@@ -214,6 +282,7 @@ class LyraOrchestrator:
 
             if user_text.lower() in {"sair", "exit", "quit"}:
                 log("Encerrando Lyra.")
+                self.shutdown_requested.set()
                 self.voice_text_queue.put(None)
                 self.voice_text_queue.join()
                 self.voice_audio_queue.join()
@@ -225,7 +294,7 @@ class LyraOrchestrator:
             if immediate_payload is not None:
                 self.cli.show_response(immediate_payload["text"])
                 expression = choose_expression(user_text, immediate_payload["text"])
-                self._set_state_safe("speaking", expression=expression)
+                self._set_state_safe("idle", expression=expression)
                 self._enqueue_voice(immediate_payload["text"])
                 continue
 
@@ -256,20 +325,22 @@ class LyraOrchestrator:
                 payload = self.response_builder.build(safe_answer)
 
                 expression = choose_expression(user_text, payload["text"])
-                self._set_state_safe("speaking", expression=expression)
+                # Response is ready, but the avatar should not lipsync until audio playback starts.
+                self._set_state_safe("idle", expression=expression)
                 self.memory.remember_exchange(user_text, payload["text"])
                 self._enqueue_voice(payload["text"])
 
                 if not self.voice_enabled:
-                    self._set_state_safe("idle")
+                    self._set_state_safe("idle", expression=expression)
 
             except Exception as exc:
                 print()
                 log(f"Falha no streaming do LLM: {exc}")
                 payload = self.process_text(user_text)
                 self.cli.show_response(payload["text"])
+                expression = choose_expression(user_text, payload["text"])
+                self._set_state_safe("idle", expression=expression)
                 self._enqueue_voice(payload["text"])
 
                 if not self.voice_enabled:
-                    self._set_state_safe("idle")
-
+                    self._set_state_safe("idle", expression=expression)
