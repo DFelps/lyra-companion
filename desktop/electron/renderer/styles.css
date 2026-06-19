@@ -1,0 +1,95 @@
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+}
+
+body {
+  -webkit-app-region: drag;
+}
+
+#stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: transparent;
+}
+
+.avatar {
+  position: relative;
+  width: min(100vw, 430px);
+  height: min(100vh, 760px);
+  transform-origin: 50% 85%;
+  animation: idleFloat 4.8s ease-in-out infinite;
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.eyes,
+.mouth {
+  transition: opacity 80ms linear, transform 90ms ease-out;
+}
+
+.avatar.speaking {
+  animation: speakingFloat 420ms ease-in-out infinite;
+}
+
+.avatar.thinking {
+  animation: thinkingFloat 2.2s ease-in-out infinite;
+}
+
+.avatar.happy .eyes,
+.avatar.happy .mouth {
+  transform: translateY(1px);
+}
+
+.avatar.surprised .mouth {
+  transform: scale(1.03);
+}
+
+#status {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font: 12px/1.2 system-ui, sans-serif;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+#status.visible {
+  opacity: 1;
+}
+
+@keyframes idleFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-7px) scale(1.003); }
+}
+
+@keyframes speakingFloat {
+  0%, 100% { transform: translateY(0) scale(1.002); }
+  50% { transform: translateY(-4px) scale(1.006); }
+}
+
+@keyframes thinkingFloat {
+  0%, 100% { transform: translateY(0) rotate(-0.35deg); }
+  50% { transform: translateY(-5px) rotate(0.35deg); }
+}

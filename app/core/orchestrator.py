@@ -1,6 +1,7 @@
 from queue import Queue
 from threading import Thread, Event, Lock
 import time
+
 from app.brain.memory_manager import MemoryManager
 from app.brain.persona_loader import PersonaLoader
 from app.brain.style_guard import StyleGuard
@@ -12,10 +13,10 @@ from app.core.session_manager import SessionManager
 from app.llm.general_reasoner import GeneralReasoner
 from app.memory.retrieval import Retrieval
 from app.ui.cli import CLI
-from app.ui.avatar_state import set_avatar_state
+from app.avatar.state import choose_expression, set_mode
 from app.utils.logger import log
 from app.voice.tts import configure_tts, generate_audio, warmup_tts
-from app.voice.tts import play_audio
+from app.avatar.lipsync import play_with_lipsync
 
 
 class LyraOrchestrator:
@@ -71,9 +72,9 @@ class LyraOrchestrator:
             if self.pending_voice_items == 0:
                 self.voice_active.clear()
 
-    def _set_state_safe(self, state: str) -> None:
+    def _set_state_safe(self, state: str, expression: str | None = None) -> None:
         try:
-            set_avatar_state(state)
+            set_mode(state, expression=expression)
         except Exception as exc:
             log(f"Falha ao ativar estado '{state}': {exc}")
 
@@ -89,7 +90,9 @@ class LyraOrchestrator:
             try:
                 result = generate_audio(text)
                 if result is not None:
-                    self.voice_audio_queue.put(result)
+                    _, wav = result
+                    expression = choose_expression("", text)
+                    self.voice_audio_queue.put((expression, wav))
                 else:
                     self._mark_voice_item_finished()
             except Exception as exc:
@@ -107,8 +110,8 @@ class LyraOrchestrator:
                 break
 
             try:
-                _, wav = item
-                play_audio(wav, 24000)
+                expression, wav = item
+                play_with_lipsync(wav, 24000, expression=expression)
             except Exception as exc:
                 log(f"Falha ao reproduzir áudio com lipsync: {exc}")
             finally:
@@ -221,9 +224,12 @@ class LyraOrchestrator:
 
             if immediate_payload is not None:
                 self.cli.show_response(immediate_payload["text"])
+                expression = choose_expression(user_text, immediate_payload["text"])
+                self._set_state_safe("speaking", expression=expression)
                 self._enqueue_voice(immediate_payload["text"])
                 continue
 
+            self._set_state_safe("thinking", expression=choose_expression(user_text))
             print("Lyra: ", end="", flush=True)
 
             chunks = []
@@ -249,6 +255,8 @@ class LyraOrchestrator:
                 safe_answer = self.style_guard.enforce(raw_answer)
                 payload = self.response_builder.build(safe_answer)
 
+                expression = choose_expression(user_text, payload["text"])
+                self._set_state_safe("speaking", expression=expression)
                 self.memory.remember_exchange(user_text, payload["text"])
                 self._enqueue_voice(payload["text"])
 
