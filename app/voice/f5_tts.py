@@ -213,11 +213,13 @@ def play_audio(wav: object, sample_rate: int = SAMPLE_RATE) -> None:
 
 
 def speak(text: str) -> str | None:
+    from app.avatar.lipsync import play_with_lipsync
+
     generated = generate_audio(text)
     if not generated:
         return None
 
     output_path, wav = generated
-    play_audio(wav, SAMPLE_RATE)
+    play_with_lipsync(wav, SAMPLE_RATE)
 
     return output_path
